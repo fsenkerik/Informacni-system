@@ -18,6 +18,7 @@ export default function DataPage() {
   const project = useSchemaStore((s) => s.project);
   const snapshot = useSnapshot();
   const records = useSimStore((s) => s.records);
+  const rowCounts = useSimStore((s) => s.rowCounts);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -26,7 +27,7 @@ export default function DataPage() {
   const current = snapshot;
   const selected = entities.find((e) => e.id === (activeId ?? entities[0]?.id));
 
-  const totalRows = Object.values(records).reduce((sum, r) => sum + r.length, 0);
+  const totalRows = Object.values(rowCounts).reduce((sum, n) => sum + n, 0);
 
   if (entities.length === 0) {
     return (
@@ -75,7 +76,7 @@ export default function DataPage() {
       <nav className="w-56 shrink-0 space-y-1">
         {entities.map((entity) => {
           const role = getRole(scenario, entity.roleKey);
-          const count = (records[entity.id] ?? []).length;
+          const count = rowCounts[entity.id] ?? 0;
           const active = entity.id === selected?.id;
           return (
             <button
@@ -161,7 +162,8 @@ export default function DataPage() {
         ) : null}
 
         <p className="mt-1 text-xs text-muted">
-          Zobrazuje se posledních {visible.length} řádků z právě běžícího provozu.
+          Náhled posledních {visible.length} řádků. Celkem jich v tabulce je{" "}
+          {selected ? (rowCounts[selected.id] ?? 0) : 0}.
         </p>
       </div>
     </main>

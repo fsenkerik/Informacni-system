@@ -26,6 +26,10 @@ import { DEMO_PROJECT, DEMO_PROJECT_ID, buildDemoSchema } from "./demo";
  * Díky tomu jde aplikaci předvést na projektoru, než je Supabase nastavená.
  */
 const isDemo = (projectId: string | null) => projectId === DEMO_PROJECT_ID;
+
+const JEN_PRO_CTENI =
+  "Tenhle projekt si můžeš jen prohlížet. Měnit ho můžou členové skupiny, " +
+  "kteří se do něj přihlásili kódem.";
 const newId = () => globalThis.crypto.randomUUID();
 
 export interface Collaborator {
@@ -45,6 +49,14 @@ interface SchemaState {
   highlightedEntityIds: string[];
   loading: boolean;
   error: string | null;
+  /**
+   * Učitel smí cizí projekt číst, ale ne měnit – zapisovat smí jen členové
+   * skupiny. Bez tohohle příznaku by mu tlačítka nabízela akce, které
+   * databáze stejně odmítne.
+   */
+  canEdit: boolean;
+  viewerRole: "member" | "teacher" | "guest";
+  setViewer(role: "member" | "teacher" | "guest"): void;
 
   load(projectId: string): Promise<void>;
   connect(projectId: string, me: { userId: string; nickname: string }): () => void;
@@ -109,6 +121,12 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   highlightedEntityIds: [],
   loading: true,
   error: null,
+  canEdit: true,
+  viewerRole: "member",
+
+  setViewer(role) {
+    set({ viewerRole: role, canEdit: role === "member" });
+  },
 
   snapshot() {
     const { projectId, entities, attributes, relationships } = get();
@@ -254,6 +272,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   // -----------------------------------------------------------------
 
   async createEntity({ name, roleKey = null, posX, posY }) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return null;
+    }
     const projectId = get().projectId;
     if (!projectId) return null;
 
@@ -280,6 +302,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async renameEntity(id, name) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, name } : e)),
     }));
@@ -290,6 +316,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async setEntityRole(id, roleKey) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, roleKey } : e)),
     }));
@@ -300,6 +330,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async moveEntity(id, posX, posY) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, posX, posY } : e)),
     }));
@@ -310,6 +344,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async deleteEntity(id) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       entities: s.entities.filter((e) => e.id !== id),
       attributes: s.attributes.filter((a) => a.entityId !== id),
@@ -337,6 +375,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
     isRequired = false,
     isUnique = false,
   }) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     const projectId = get().projectId;
     if (!projectId) return;
     const orderIndex = get().attributes.filter((a) => a.entityId === entityId).length;
@@ -394,6 +436,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async updateAttribute(id, patch) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       attributes: s.attributes.map((a) => (a.id === id ? { ...a, ...patch } : a)),
     }));
@@ -417,6 +463,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async deleteAttribute(id) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({ attributes: s.attributes.filter((a) => a.id !== id) }));
     if (isDemo(get().projectId)) return;
 
@@ -429,6 +479,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   // -----------------------------------------------------------------
 
   async createRelationship({ fromEntityId, toEntityId, kind, junctionEntityId = null }) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return null;
+    }
     const projectId = get().projectId;
     if (!projectId) return null;
 
@@ -474,6 +528,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async updateRelationship(id, patch) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({
       relationships: s.relationships.map((r) => (r.id === id ? { ...r, ...patch } : r)),
     }));
@@ -496,6 +554,10 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async deleteRelationship(id) {
+    if (!get().canEdit) {
+      set({ error: JEN_PRO_CTENI });
+      return;
+    }
     set((s) => ({ relationships: s.relationships.filter((r) => r.id !== id) }));
     if (isDemo(get().projectId)) return;
 

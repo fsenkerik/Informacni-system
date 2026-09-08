@@ -56,7 +56,13 @@ interface SimState {
   metrics: SimMetrics;
   issues: IssueTally[];
   log: SimEvent[];
+  /** Náhled posledních řádků pro prohlížeč dat. */
   records: Record<string, SimRecord[]>;
+  /**
+   * Skutečné počty řádků. Náhled je oříznutý na posledních pár desítek, takže
+   * počítat jeho délku by znamenalo, že se čísla na scéně „zaseknou" na 40.
+   */
+  rowCounts: Record<string, number>;
   activeCustomer: ActiveCustomer | null;
   flashes: Record<string, number>;
   /** Výsledovka po dnech – z ní se kreslí sloupcový graf zisku. */
@@ -125,6 +131,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   issues: [],
   log: [],
   records: {},
+  rowCounts: {},
   activeCustomer: null,
   flashes: {},
   ledger: [],
@@ -177,6 +184,7 @@ export const useSimStore = create<SimState>((set, get) => ({
       issues: [],
       log: [],
       records: {},
+      rowCounts: {},
       activeCustomer: null,
       ledger: [],
       lastDay: null,
@@ -308,12 +316,14 @@ function startLoop(set: SetState, get: () => SimState) {
     const active = deriveActiveCustomer(frameEvents, get().activeCustomer);
     const flashes = { ...get().flashes };
     const records = { ...get().records };
+    const rowCounts = { ...get().rowCounts };
 
     for (const event of frameEvents) {
       if (event.type === "RECORD_INSERTED" && event.entityId) {
         flashes[event.entityId] = Date.now();
         const fromEngine = engine.getRecords(event.entityId);
         records[event.entityId] = fromEngine.slice(-RECORDS_PER_TABLE);
+        rowCounts[event.entityId] = fromEngine.length;
         const fresh = fromEngine[fromEngine.length - 1];
         if (fresh && persistedRecords < PERSIST_RECORD_CAP) {
           pendingRecords.push({ entityId: event.entityId, record: fresh });
@@ -341,6 +351,7 @@ function startLoop(set: SetState, get: () => SimState) {
       activeCustomer: active,
       flashes,
       records,
+      rowCounts,
       moneyPops,
       ledger: engine.getLedger(),
       lastDay: closed?.dayResult ?? get().lastDay,

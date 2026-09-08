@@ -24,6 +24,7 @@ export default function DesignPage() {
   const select = useSchemaStore((s) => s.select);
   const createEntity = useSchemaStore((s) => s.createEntity);
   const createAttribute = useSchemaStore((s) => s.createAttribute);
+  const canEdit = useSchemaStore((s) => s.canEdit);
   const snapshot = useSnapshot();
 
   const scenario = getScenario(project?.scenario_key ?? "eshop");
@@ -61,6 +62,8 @@ export default function DesignPage() {
     <div className="flex min-h-0 flex-1">
       <section className="relative min-w-0 flex-1">
         <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
+          {canEdit ? (
+            <>
           <Button
             size="sm"
             onClick={() =>
@@ -85,11 +88,19 @@ export default function DesignPage() {
               + {role.label}
             </button>
           ))}
+            </>
+          ) : (
+            <span className="rounded-lg bg-canvas-2/90 px-3 py-1.5 text-xs text-canvas-muted">
+              Jen pro čtení – diagram upravují členové skupiny.
+            </span>
+          )}
         </div>
 
-        <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-canvas-2/90 px-3 py-2 text-xs text-canvas-muted backdrop-blur">
-          Vazbu nakreslíš tažením z pravého okraje tabulky do levého okraje jiné.
-        </div>
+        {canEdit ? (
+          <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-canvas-2/90 px-3 py-2 text-xs text-canvas-muted backdrop-blur">
+            Vazbu nakreslíš tažením z pravého okraje tabulky do levého okraje jiné.
+          </div>
+        ) : null}
 
         <ErCanvas
           selectedRelationshipId={selectedRelationshipId}

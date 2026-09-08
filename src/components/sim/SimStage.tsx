@@ -15,7 +15,7 @@ const ROLE_ORDER = ["customer", "order", "order_item", "product"];
 export function SimStage() {
   const entities = useSchemaStore((s) => s.entities);
   const project = useSchemaStore((s) => s.project);
-  const records = useSimStore((s) => s.records);
+  const rowCounts = useSimStore((s) => s.rowCounts);
   const flashes = useSimStore((s) => s.flashes);
   const active = useSimStore((s) => s.activeCustomer);
   const status = useSimStore((s) => s.status);
@@ -46,6 +46,12 @@ export function SimStage() {
         </div>
       </div>
 
+      {ordered.length > 0 && status !== "idle" ? (
+        <p className="pointer-events-none absolute left-6 top-3 text-[11px] text-canvas-muted">
+          Čísla ukazují, kolik řádků už simulace do každé tabulky zapsala.
+        </p>
+      ) : null}
+
       {ordered.length === 0 ? (
         <p className="text-sm text-canvas-muted">
           Firma zatím nemá jedinou tabulku. Vrať se na kartu Návrh.
@@ -54,7 +60,7 @@ export function SimStage() {
 
       {ordered.map((entity) => {
         const role = getRole(scenario, entity.roleKey);
-        const rows = records[entity.id] ?? [];
+        const pocet = rowCounts[entity.id] ?? 0;
         const flashedAt = flashes[entity.id] ?? 0;
         const isActive = active?.entityId === entity.id;
 
@@ -81,10 +87,10 @@ export function SimStage() {
               </div>
               <div className="px-3 py-3">
                 <p className="text-2xl font-semibold tabular-nums text-canvas-ink">
-                  {formatNumber(rows.length)}
+                  {formatNumber(pocet)}
                 </p>
                 <p className="text-[11px] text-canvas-muted">
-                  {rows.length === 1 ? "řádek" : rows.length < 5 ? "řádky" : "řádků"}
+                  {sklonujRadky(pocet)} v tabulce
                 </p>
               </div>
             </motion.div>
@@ -142,6 +148,13 @@ export function SimStage() {
       ) : null}
     </div>
   );
+}
+
+/** 1 řádek, 2–4 řádky, 5+ řádků – jinak to na projektoru tahá za oči. */
+function sklonujRadky(pocet: number): string {
+  if (pocet === 1) return "řádek";
+  if (pocet >= 2 && pocet <= 4) return "řádky";
+  return "řádků";
 }
 
 function CustomerAvatar({

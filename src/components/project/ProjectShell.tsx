@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, Database, Table2, Trophy, FileCode2 } from "lucide-react";
+import { Activity, Database, Eye, FileCode2, Table2, Trophy } from "lucide-react";
 import { Badge, JoinCode } from "@/components/ui";
 import { SetupNotice } from "@/components/SetupNotice";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -35,6 +35,8 @@ export function ProjectShell({
   const loading = useSchemaStore((s) => s.loading);
   const error = useSchemaStore((s) => s.error);
   const collaborators = useSchemaStore((s) => s.collaborators);
+  const setViewer = useSchemaStore((s) => s.setViewer);
+  const canEdit = useSchemaStore((s) => s.canEdit);
   const [nickname, setNickname] = useState<string | null>(null);
 
   const isDemo = projectId === DEMO_PROJECT_ID;
@@ -74,6 +76,7 @@ export function ProjectShell({
       // Učitel není členem skupiny – chodí se jen podívat, ale ať je poznat.
       const name = member?.nickname ?? (user.is_anonymous ? "Host" : "Učitel");
       setNickname(name);
+      setViewer(member ? "member" : user.is_anonymous ? "guest" : "teacher");
 
       disconnect = connect(projectId, { userId: user.id, nickname: name });
       if (cancelled) {
@@ -87,7 +90,7 @@ export function ProjectShell({
       cancelled = true;
       disconnect?.();
     };
-  }, [projectId, load, connect]);
+  }, [projectId, load, connect, setViewer]);
 
   if (!isSupabaseConfigured && !isDemo) {
     return (
@@ -167,6 +170,16 @@ export function ProjectShell({
           })}
         </nav>
       </header>
+
+      {!canEdit ? (
+        <div className="flex items-center gap-2 border-b border-warn/30 bg-warn-soft px-6 py-2 text-sm text-warn">
+          <Eye size={15} aria-hidden />
+          <span>
+            Prohlížíš projekt skupiny jen pro čtení. Upravovat ho můžou žáci,
+            kteří se do něj přihlásili kódem.
+          </span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="border-b border-bad/30 bg-bad-soft px-6 py-2 text-sm text-bad">
