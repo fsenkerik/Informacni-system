@@ -50,19 +50,23 @@ export function BusinessPanel() {
           {formatCurrency(metrics.profit)}
         </motion.p>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <p className="text-muted">Tržby</p>
-            <p className="font-semibold tabular-nums text-ink">
-              {formatCurrency(metrics.revenue)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted">Náklady</p>
-            <p className="font-semibold tabular-nums text-ink">
-              −{formatCurrency(metrics.expenses)}
-            </p>
-          </div>
+        <div className="mt-3 space-y-1 text-xs">
+          <Radek popis="Tržby" hodnota={formatCurrency(metrics.revenue)} />
+          <Radek popis="Zboží" hodnota={`−${formatCurrency(metrics.purchases)}`} />
+          <Radek popis="Mzdy" hodnota={`−${formatCurrency(metrics.wages)}`} />
+          <Radek popis="Nájem a energie" hodnota={`−${formatCurrency(metrics.rent)}`} />
+        </div>
+
+        <div className="mt-3 flex items-baseline justify-between border-t border-ink/10 pt-2">
+          <span className="text-xs text-ink-2">V pokladně</span>
+          <span
+            className={cn(
+              "text-base font-semibold tabular-nums",
+              metrics.cash >= 0 ? "text-ink" : "text-bad",
+            )}
+          >
+            {formatCurrency(metrics.cash)}
+          </span>
         </div>
       </div>
 
@@ -103,6 +107,15 @@ export function BusinessPanel() {
           <ProfitBars ledger={ledger} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function Radek({ popis, hodnota }: { popis: string; hodnota: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-muted">{popis}</span>
+      <span className="font-semibold tabular-nums text-ink">{hodnota}</span>
     </div>
   );
 }

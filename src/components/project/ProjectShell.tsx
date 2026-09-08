@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, Database, Eye, FileCode2, Table2, Trophy } from "lucide-react";
+import { Activity, Database, Eye, FileCode2, Store, Table2, Trophy } from "lucide-react";
 import { Badge, JoinCode } from "@/components/ui";
 import { SetupNotice } from "@/components/SetupNotice";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "navrh", label: "Návrh", icon: Table2 },
+  { href: "firma", label: "Firma", icon: Store },
   { href: "provoz", label: "Provoz", icon: Activity },
   { href: "data", label: "Data", icon: Database },
   { href: "uspechy", label: "Úspěchy", icon: Trophy },

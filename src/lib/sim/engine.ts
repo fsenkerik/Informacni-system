@@ -15,7 +15,9 @@ import * as issues from "./issues";
 import { issueKey } from "./issues";
 import { checkRequirements, entityForRole, resolveLink } from "./requirements";
 import type {
+  CatalogItem,
   DayResult,
+  FirmSettings,
   JourneyContext,
   Scenario,
   SimEvent,
@@ -23,6 +25,7 @@ import type {
   SimMetrics,
   SimRecord,
 } from "./types";
+import { DEFAULT_FIRM_SETTINGS } from "./types";
 
 /** Provozní doba firmy v herních minutách (8:00–20:00). */
 const DAY_START = 8 * 60;
@@ -33,18 +36,18 @@ const CATALOG_SIZE = 8;
 
 /**
  * Ekonomika firmy – schválně jednoduchá, aby si ji žák spočítal i na papíře.
- * Zboží nakupuješ za 60 % prodejní ceny, marže je tedy 40 %. Nájem, energie
- * a mzdy platíš každý den bez ohledu na to, jestli něco prodáš – proto firma
- * se špatně navrženou databází spolehlivě prodělá.
+ * Nákupní cena se bere z marže (nebo ji žák zadá u položky ručně), mzdy
+ * nabíhají po hodinách a nájem se platí každé ráno. Firma tak začíná
+ * v mínusu za nakoupený sklad a musí se z něj teprve doprodat.
  */
-const PURCHASE_RATIO = 0.6;
-const FIXED_DAILY_COST = 2000;
-
 export interface EngineOptions {
   snapshot: SchemaSnapshot;
   scenario: Scenario;
   seed: number;
   customersPerDay: number;
+  settings?: FirmSettings;
+  /** Sortiment, který žáci vypsali. Prázdný = engine si vymyslí vlastní. */
+  catalog?: CatalogItem[];
 }
 
 export interface TickResult {
@@ -76,6 +79,11 @@ export class SimEngine {
   private readonly scenario: Scenario;
   private readonly customersPerDay: number;
   private readonly rng: Rng;
+  private readonly settings: FirmSettings;
+  private readonly catalog: CatalogItem[];
+  /** Obchodní údaje k položce sortimentu podle id záznamu v simulaci. */
+  private itemByRecord = new Map<string, CatalogItem>();
+  private lastWageHour = -1;
 
   private tickCount = 0;
   private clock = DAY_START;
@@ -96,6 +104,10 @@ export class SimEngine {
     ordersCreated: 0,
     revenue: 0,
     expenses: 0,
+    wages: 0,
+    purchases: 0,
+    rent: 0,
+    cash: 0,
     profit: 0,
     lostRevenue: 0,
     dataIntegrity: 100,
@@ -109,6 +121,9 @@ export class SimEngine {
     this.scenario = options.scenario;
     this.customersPerDay = Math.max(1, options.customersPerDay);
     this.rng = mulberry32(options.seed);
+    this.settings = options.settings ?? DEFAULT_FIRM_SETTINGS;
+    this.catalog = options.catalog ?? [];
+    this.metrics.cash = this.settings.startingCapital;
   }
 
   /** Schéma se mění za běhu – žák opraví vazbu a chyby musí hned přestat. */
@@ -159,18 +174,23 @@ export class SimEngine {
     // Nájem a naskladnění platíš každý den, i kdyby nepřišel jediný zákazník.
     if (isOpen && !this.chargedDays.has(day)) {
       this.chargedDays.add(day);
-      this.addExpense(FIXED_DAILY_COST);
-      events.push({
-        tick: this.tickCount,
-        type: "EXPENSE",
-        severity: "info",
-        message: `Zaplacen nájem, energie a mzdy za den ${day + 1}.`,
-        amount: -FIXED_DAILY_COST,
-      });
+      this.lastWageHour = -1;
+
+      if (this.settings.rentPerDay > 0) {
+        this.addExpense(this.settings.rentPerDay, "rent");
+        events.push({
+          tick: this.tickCount,
+          type: "EXPENSE",
+          severity: "info",
+          message: `Nájem a energie za den ${day + 1}.`,
+          amount: -Math.round(this.settings.rentPerDay),
+        });
+      }
       this.restockCatalog(events);
     }
 
     if (isOpen) {
+      this.payWages(minuteOfDay, events);
       this.seedCatalog(events);
       const arrivalChance = this.customersPerDay / OPEN_MINUTES;
       if (this.rng() < arrivalChance) {
@@ -602,20 +622,30 @@ export class SimEngine {
 
     const person = makePerson(this.rng);
     const ctx = this.createContext(person, [], "seed");
-    for (let i = 0; i < CATALOG_SIZE; i += 1) {
-      this.writeRecord(entity, person, undefined, ctx, [], "seed");
+
+    if (this.catalog.length > 0) {
+      // Sortiment vypsali žáci – zapisujeme jejich hodnoty, ne vymyšlené.
+      for (const item of this.catalog) {
+        const zapsany = this.writeRecord(entity, person, item.data, ctx, [], "seed");
+        if (zapsany) this.itemByRecord.set(zapsany.id, item);
+      }
+    } else {
+      for (let i = 0; i < CATALOG_SIZE; i += 1) {
+        this.writeRecord(entity, person, undefined, ctx, [], "seed");
+      }
     }
 
     // První sklad se musí zaplatit, jinak by firma prodávala zboží, které
     // nikdy nekoupila – a začátek podnikání by vypadal jako hotové peníze.
-    const cost = this.catalogValue(entity) * PURCHASE_RATIO;
-    this.addExpense(cost);
+    const pocet = (this.records.get(entity.id) ?? []).length;
+    const cost = this.catalogValue(entity);
+    this.addExpense(cost, "purchases");
 
     events.push({
       tick: this.tickCount,
       type: "EXPENSE",
       severity: "info",
-      message: `Nakoupen počáteční sklad (${CATALOG_SIZE} položek) za ${Math.round(cost).toLocaleString("cs-CZ")} Kč.`,
+      message: `Nakoupen počáteční sklad (${pocet} položek) za ${Math.round(cost).toLocaleString("cs-CZ")} Kč.`,
       entityId: entity.id,
       amount: -Math.round(cost),
     });
@@ -628,44 +658,64 @@ export class SimEngine {
     const stockAttr = this.attributeBySemantic(entity.id, "stock");
     if (!stockAttr) return;
 
+    if (!this.settings.autoRestock) return;
+    const vysledek = this.restockNow();
+    if (vysledek.items === 0) return;
+
+    events.push({
+      tick: this.tickCount,
+      type: "EXPENSE",
+      severity: "info",
+      message: `Doobjednáno ${vysledek.items} položek za ${Math.round(vysledek.cost).toLocaleString("cs-CZ")} Kč.`,
+      entityId: entity.id,
+      amount: -Math.round(vysledek.cost),
+    });
+  }
+
+  /**
+   * Doplní sklad podle pravidla u každé položky („klesne-li pod X, dokup Y").
+   * Volá se ráno automaticky, nebo ručně tlačítkem, když si žák automatiku vypnul.
+   */
+  restockNow(): { items: number; cost: number } {
+    const entity = entityForRole(this.snapshot, "product");
+    if (!entity) return { items: 0, cost: 0 };
+    const stockAttr = this.attributeBySemantic(entity.id, "stock");
     const priceAttr = this.attributeBySemantic(entity.id, "price");
-    const list = this.records.get(entity.id) ?? [];
-    let restocked = 0;
+    if (!stockAttr) return { items: 0, cost: 0 };
+
+    let items = 0;
     let cost = 0;
 
-    for (const record of list) {
-      const current = Number(record.data[stockAttr.name] ?? 0);
-      if (current > 10) continue;
-      const target = randomInt(this.rng, 20, 60);
-      record.data[stockAttr.name] = target;
-      restocked += 1;
+    for (const record of this.records.get(entity.id) ?? []) {
+      const item = this.itemByRecord.get(record.id);
+      const hranice = item?.reorderLevel ?? 5;
+      const mnozstvi = item?.reorderQty ?? randomInt(this.rng, 20, 60);
 
-      const price = priceAttr ? Number(record.data[priceAttr.name]) : NaN;
-      if (Number.isFinite(price)) {
-        cost += (target - Math.max(0, current)) * price * PURCHASE_RATIO;
+      const current = Number(record.data[stockAttr.name] ?? 0);
+      if (Number.isFinite(current) && current > hranice) continue;
+      if (mnozstvi <= 0) continue;
+
+      record.data[stockAttr.name] = Math.max(0, current) + mnozstvi;
+      items += 1;
+
+      const sell = priceAttr ? Number(record.data[priceAttr.name]) : NaN;
+      if (Number.isFinite(sell)) {
+        cost += this.purchasePriceOf(record, sell) * mnozstvi;
       }
     }
 
-    if (restocked > 0) {
-      this.addExpense(cost);
-      events.push({
-        tick: this.tickCount,
-        type: "EXPENSE",
-        severity: "info",
-        message: `Naskladněno ${restocked} položek za ${Math.round(cost).toLocaleString("cs-CZ")} Kč.`,
-        entityId: entity.id,
-        amount: -Math.round(cost),
-      });
-    }
+    if (cost > 0) this.addExpense(cost, "purchases");
+    return { items, cost };
   }
 
   // -------------------------------------------------------------------
   //  Peníze
   // -------------------------------------------------------------------
 
-  private addExpense(amount: number) {
+  private addExpense(amount: number, druh: "wages" | "purchases" | "rent" = "purchases") {
     if (amount <= 0) return;
     this.metrics.expenses += amount;
+    this.metrics[druh] += amount;
     this.day.expenses += amount;
     this.recomputeProfit();
   }
@@ -673,6 +723,15 @@ export class SimEngine {
   private recomputeProfit() {
     this.metrics.profit =
       Math.round((this.metrics.revenue - this.metrics.expenses) * 100) / 100;
+    this.metrics.cash =
+      Math.round((this.settings.startingCapital + this.metrics.profit) * 100) / 100;
+  }
+
+  /** Nákupní cena položky: ručně zadaná, jinak dopočítaná z marže firmy. */
+  private purchasePriceOf(record: SimRecord, sellPrice: number): number {
+    const item = this.itemByRecord.get(record.id);
+    if (item?.purchasePrice != null) return item.purchasePrice;
+    return sellPrice * (1 - this.settings.marginPercent / 100);
   }
 
   /**
@@ -734,18 +793,42 @@ export class SimEngine {
     return [...this.ledger];
   }
 
-  /** Pořizovací hodnota celého skladu – kolik v něm leží peněz. */
+  /** Kolik firma zaplatila za zboží, které má na skladě. */
   private catalogValue(entity: EntityRecord): number {
     const priceAttr = this.attributeBySemantic(entity.id, "price");
     const stockAttr = this.attributeBySemantic(entity.id, "stock");
     if (!priceAttr) return 0;
 
     return (this.records.get(entity.id) ?? []).reduce((sum, record) => {
-      const price = Number(record.data[priceAttr.name]);
+      const sell = Number(record.data[priceAttr.name]);
+      if (!Number.isFinite(sell)) return sum;
       const stock = stockAttr ? Number(record.data[stockAttr.name]) : 1;
-      if (!Number.isFinite(price)) return sum;
-      return sum + price * (Number.isFinite(stock) ? stock : 1);
+      const kusu = Number.isFinite(stock) ? stock : 1;
+      return sum + this.purchasePriceOf(record, sell) * kusu;
     }, 0);
+  }
+
+  /**
+   * Mzdy nabíhají za každou odpracovanou hodinu, ne jednou za den.
+   * Díky tomu je na scéně vidět, jak náklady rostou i ve chvíli, kdy nikdo
+   * nenakupuje – což je přesně ta nepříjemná část podnikání.
+   */
+  private payWages(minuteOfDay: number, events: SimEvent[]) {
+    const hodina = Math.floor(minuteOfDay / 60);
+    if (hodina === this.lastWageHour) return;
+    this.lastWageHour = hodina;
+
+    const mzdy = this.settings.employees * this.settings.hourlyWage;
+    if (mzdy <= 0) return;
+
+    this.addExpense(mzdy, "wages");
+    events.push({
+      tick: this.tickCount,
+      type: "EXPENSE",
+      severity: "info",
+      message: `Mzdy za hodinu – ${this.settings.employees} × ${this.settings.hourlyWage} Kč.`,
+      amount: -Math.round(mzdy),
+    });
   }
 
   private recordIssue(issue: SimIssue) {

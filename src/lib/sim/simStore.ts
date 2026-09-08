@@ -8,7 +8,14 @@ import type { SchemaSnapshot, SizePreset } from "@/lib/types";
 import { SIZE_PRESET_INFO } from "@/lib/types";
 import { SimEngine, type IssueTally } from "./engine";
 import { getScenario } from "./scenarios";
-import type { DayResult, SimEvent, SimMetrics, SimRecord } from "./types";
+import type {
+  CatalogItem,
+  DayResult,
+  FirmSettings,
+  SimEvent,
+  SimMetrics,
+  SimRecord,
+} from "./types";
 
 /**
  * Simulaci točí prohlížeč toho, kdo ji spustil (host).
@@ -77,7 +84,11 @@ interface SimState {
     snapshot: SchemaSnapshot;
     scenarioKey: string;
     sizePreset: SizePreset;
+    settings: FirmSettings;
+    catalog: CatalogItem[];
   }): Promise<void>;
+  /** Ruční doplnění skladu, když si žák vypnul automatiku. */
+  restockNow(): { items: number; cost: number };
   pause(): void;
   resume(): void;
   stop(): Promise<void>;
@@ -95,6 +106,10 @@ const EMPTY_METRICS: SimMetrics = {
   ordersCreated: 0,
   revenue: 0,
   expenses: 0,
+  wages: 0,
+  purchases: 0,
+  rent: 0,
+  cash: 0,
   profit: 0,
   lostRevenue: 0,
   dataIntegrity: 100,
@@ -146,7 +161,16 @@ export const useSimStore = create<SimState>((set, get) => ({
     engine?.updateSnapshot(snapshot);
   },
 
-  async start({ projectId, snapshot, scenarioKey, sizePreset }) {
+  restockNow() {
+    if (!engine) return { items: 0, cost: 0 };
+    const vysledek = engine.restockNow();
+    if (vysledek.items > 0) {
+      set({ metrics: engine.getMetrics() });
+    }
+    return vysledek;
+  },
+
+  async start({ projectId, snapshot, scenarioKey, sizePreset, settings, catalog }) {
     const demo = projectId === DEMO_PROJECT_ID;
     const scenario = getScenario(scenarioKey);
     const customersPerDay = SIZE_PRESET_INFO[sizePreset].customersPerDay;
@@ -155,7 +179,7 @@ export const useSimStore = create<SimState>((set, get) => ({
     currentProjectId = projectId;
     persistedRecords = 0;
     pendingRecords = [];
-    engine = new SimEngine({ snapshot, scenario, seed, customersPerDay });
+    engine = new SimEngine({ snapshot, scenario, seed, customersPerDay, settings, catalog });
 
     let runId: string | null = null;
     if (!demo) {

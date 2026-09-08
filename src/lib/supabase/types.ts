@@ -175,6 +175,29 @@ export type ProjectAchievementRow = {
   unlocked_at: string;
 };
 
+export type ProjectSettingsRow = {
+  project_id: string;
+  margin_percent: number;
+  employees: number;
+  hourly_wage: number;
+  rent_per_day: number;
+  starting_capital: number;
+  auto_restock: boolean;
+  updated_at: string;
+};
+
+export type CatalogItemRow = {
+  id: string;
+  project_id: string;
+  data: Record<string, unknown>;
+  purchase_price: number | null;
+  reorder_level: number;
+  reorder_qty: number;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -194,6 +217,20 @@ export type Database = {
       sim_issues: Table<SimIssueRow, "id" | "project_id">;
       project_progress: Table<ProjectProgressRow, "xp" | "level" | "missions_done" | "updated_at">;
       project_achievements: Table<ProjectAchievementRow, "unlocked_at" | "xp">;
+      project_settings: Table<
+        ProjectSettingsRow,
+        | "margin_percent"
+        | "employees"
+        | "hourly_wage"
+        | "rent_per_day"
+        | "starting_capital"
+        | "auto_restock"
+        | "updated_at"
+      >;
+      catalog_items: Table<
+        CatalogItemRow,
+        "id" | "data" | "reorder_level" | "reorder_qty" | "order_index" | "created_at" | "updated_at"
+      >;
     };
     Views: Record<never, never>;
     Functions: {

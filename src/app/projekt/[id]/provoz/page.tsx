@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { Pause, Play, Square } from "lucide-react";
+import { PackagePlus, Pause, Play, Square } from "lucide-react";
 import { SimStage } from "@/components/sim/SimStage";
 import { BusinessPanel } from "@/components/sim/BusinessPanel";
 import { IssuePanel } from "@/components/sim/IssuePanel";
 import { EventLog, formatClock } from "@/components/sim/EventLog";
 import { Badge, Button, Card, Select } from "@/components/ui";
 import { useSchemaStore, useSnapshot } from "@/lib/er/store";
+import { useFirmStore } from "@/lib/firma/store";
 import { SPEEDS, useSimStore } from "@/lib/sim/simStore";
 import { describeReadiness } from "@/lib/sim/requirements";
 import { getScenario } from "@/lib/sim/scenarios";
@@ -32,6 +33,11 @@ export default function OperationsPage() {
   const setSpeed = useSimStore((s) => s.setSpeed);
   const syncSchema = useSimStore((s) => s.syncSchema);
   const watch = useSimStore((s) => s.watch);
+  const restockNow = useSimStore((s) => s.restockNow);
+
+  const loadFirm = useFirmStore((s) => s.load);
+  const settings = useFirmStore((s) => s.settings);
+  const catalog = useFirmStore((s) => s.catalog);
 
   const scenario = getScenario(project?.scenario_key ?? "eshop");
   const readiness = describeReadiness(current, scenario);
@@ -47,6 +53,19 @@ export default function OperationsPage() {
     return watch(projectId);
   }, [projectId, watch]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    async function run() {
+      await loadFirm(projectId!);
+      if (cancelled) return;
+    }
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, loadFirm]);
+
   async function handleStart() {
     if (!projectId || !project) return;
     await start({
@@ -54,6 +73,8 @@ export default function OperationsPage() {
       snapshot: current,
       scenarioKey: project.scenario_key,
       sizePreset: project.size_preset,
+      settings,
+      catalog,
     });
   }
 
@@ -82,6 +103,13 @@ export default function OperationsPage() {
             <Button variant="ghost" onClick={() => void stop()}>
               <Square size={16} aria-hidden />
               Ukončit
+            </Button>
+          ) : null}
+
+          {status !== "idle" && !settings.autoRestock ? (
+            <Button variant="secondary" onClick={() => restockNow()}>
+              <PackagePlus size={16} aria-hidden />
+              Doplnit sklad
             </Button>
           ) : null}
         </div>

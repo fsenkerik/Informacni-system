@@ -79,6 +79,38 @@ export interface SimEvent {
   dayResult?: DayResult;
 }
 
+/** Nastavení firmy, které si žáci sami zvolí na kartě Firma. */
+export interface FirmSettings {
+  /** Marže v procentech: nákupní cena = prodejní × (1 − marže/100). */
+  marginPercent: number;
+  employees: number;
+  hourlyWage: number;
+  /** Nájem a energie za den; mzdy se počítají zvlášť po hodinách. */
+  rentPerDay: number;
+  startingCapital: number;
+  autoRestock: boolean;
+}
+
+export const DEFAULT_FIRM_SETTINGS: FirmSettings = {
+  marginPercent: 40,
+  employees: 2,
+  hourlyWage: 150,
+  rentPerDay: 800,
+  startingCapital: 100000,
+  autoRestock: true,
+};
+
+/** Jedna položka sortimentu, jak ji žák vypsal do své tabulky Produkt. */
+export interface CatalogItem {
+  id: string;
+  /** Hodnoty podle sloupců, které si žák navrhl. */
+  data: Record<string, unknown>;
+  /** null = dopočítat z marže firmy. */
+  purchasePrice: number | null;
+  reorderLevel: number;
+  reorderQty: number;
+}
+
 /** Výsledek jednoho obchodního dne – z toho se skládá výsledovka firmy. */
 export interface DayResult {
   day: number;
@@ -96,8 +128,14 @@ export interface SimMetrics {
   customersLost: number;
   ordersCreated: number;
   revenue: number;
-  /** Nákup zboží a fixní náklady (nájem, energie, mzdy). */
+  /** Všechny náklady dohromady. */
   expenses: number;
+  /** Rozpad nákladů, ať je vidět, kam peníze tečou. */
+  wages: number;
+  purchases: number;
+  rent: number;
+  /** Počáteční kapitál + tržby − náklady. Může jít do mínusu. */
+  cash: number;
   /** Tržby minus náklady. Záporný zisk = firma prodělává. */
   profit: number;
   /** Kolik peněz uteklo se zákazníky, které systém nedokázal obsloužit. */
