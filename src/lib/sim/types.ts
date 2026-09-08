@@ -66,6 +66,8 @@ export interface SimEvent {
   /** Věta, kterou uvidí žák v logu. Vždy česky a konkrétně. */
   message: string;
   customerId?: string;
+  /** Jméno zákazníka pro animaci – ať se netahá parsováním z věty. */
+  customerName?: string;
   entityId?: string;
   stepKey?: string;
   issue?: SimIssue;

@@ -200,8 +200,18 @@ export const useSimStore = create<SimState>((set, get) => ({
   watch(projectId) {
     if (projectId === DEMO_PROJECT_ID) return () => {};
     const supabase = getSupabaseBrowserClient();
+    const topic = `sim:${projectId}`;
+
+    // Stejné téma slouží k odesílání i k příjmu. Kdyby tu zůstal starý kanál,
+    // druhé přihlášení by na něm selhalo – proto ho nejdřív zahodíme.
+    for (const existing of supabase.getChannels()) {
+      if (existing.topic === topic || existing.topic === `realtime:${topic}`) {
+        void supabase.removeChannel(existing);
+      }
+    }
+
     const watchChannel = supabase
-      .channel(`sim:${projectId}`)
+      .channel(topic)
       .on("broadcast", { event: "tick" }, ({ payload }) => {
         const state = payload as BroadcastPayload;
         if (get().isHost) return;
@@ -219,7 +229,10 @@ export const useSimStore = create<SimState>((set, get) => ({
       })
       .subscribe();
 
+    channel = watchChannel;
+
     return () => {
+      if (channel === watchChannel) channel = null;
       void supabase.removeChannel(watchChannel);
     };
   },
@@ -237,6 +250,7 @@ interface BroadcastPayload {
   activeCustomer: ActiveCustomer | null;
 }
 
+/** Kanál obvykle už drží watch(); zakládá se jen když provoz běží bez diváka. */
 function ensureChannel(projectId: string) {
   if (channel) return;
   const supabase = getSupabaseBrowserClient();
@@ -348,7 +362,7 @@ function deriveActiveCustomer(
     if (event.type === "CUSTOMER_ARRIVED" && event.customerId) {
       current = {
         id: event.customerId,
-        name: event.message.replace("Přišel zákazník ", "").replace(".", ""),
+        name: event.customerName ?? "Zákazník",
         entityId: null,
         stepKey: null,
         message: "přichází",

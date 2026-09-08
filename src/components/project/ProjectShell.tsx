@@ -41,10 +41,17 @@ export function ProjectShell({
 
   useEffect(() => {
     if (!isSupabaseConfigured && projectId !== DEMO_PROJECT_ID) return;
+
+    // Připojení běží přes několik awaitů. Kdyby žák mezitím přeskočil na jinou
+    // kartu, musí se kanál zavřít i tak – jinak by se spojení hromadila a
+    // třída by narazila na limit Realtimu.
+    let cancelled = false;
     let disconnect: (() => void) | undefined;
 
     async function boot() {
       await load(projectId);
+      if (cancelled) return;
+
       if (projectId === DEMO_PROJECT_ID) {
         setNickname("ukázka");
         return;
@@ -52,6 +59,7 @@ export function ProjectShell({
 
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
       const user = data.user;
       if (!user) return;
 
@@ -61,14 +69,24 @@ export function ProjectShell({
         .eq("project_id", projectId)
         .eq("user_id", user.id)
         .maybeSingle();
+      if (cancelled) return;
 
-      const name = member?.nickname ?? "Host";
+      // Učitel není členem skupiny – chodí se jen podívat, ale ať je poznat.
+      const name = member?.nickname ?? (user.is_anonymous ? "Host" : "Učitel");
       setNickname(name);
+
       disconnect = connect(projectId, { userId: user.id, nickname: name });
+      if (cancelled) {
+        disconnect();
+        disconnect = undefined;
+      }
     }
 
     void boot();
-    return () => disconnect?.();
+    return () => {
+      cancelled = true;
+      disconnect?.();
+    };
   }, [projectId, load, connect]);
 
   if (!isSupabaseConfigured && !isDemo) {

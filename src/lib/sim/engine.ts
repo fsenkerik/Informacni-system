@@ -189,8 +189,9 @@ export class SimEngine {
       tick: this.tickCount,
       type: "CUSTOMER_ARRIVED",
       severity: "info",
-      message: `Přišel zákazník ${person.firstName} ${person.lastName}.`,
+      message: `Přichází ${person.firstName} ${person.lastName}.`,
       customerId,
+      customerName: `${person.firstName} ${person.lastName}`,
     });
 
     const ctx = this.createContext(person, events, customerId);
@@ -215,7 +216,7 @@ export class SimEngine {
           tick: this.tickCount,
           type: "CUSTOMER_LOST",
           severity: "error",
-          message: `${person.firstName} odchází – systém ho nedokázal obsloužit.`,
+          message: `${person.firstName} odchází – systém tenhle nákup nezvládl.`,
           customerId,
         });
         return;
@@ -254,7 +255,7 @@ export class SimEngine {
       tick: this.tickCount,
       type: "CUSTOMER_LEFT",
       severity: "info",
-      message: `${person.firstName} byl obsloužen a odchází spokojený.`,
+      message: `${person.firstName} má hotovo a odchází spokojeně.`,
       customerId,
     });
   }

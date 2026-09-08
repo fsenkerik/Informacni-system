@@ -167,9 +167,21 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   connect(projectId, me) {
     if (isDemo(projectId)) return () => {};
     const supabase = getSupabaseBrowserClient();
+    const topic = `projekt:${projectId}`;
+
+    // Supabase si kanály cachuje podle tématu a na už přihlášený kanál nejde
+    // přidat další posluchače – druhé připojení by spadlo na
+    // „cannot add postgres_changes callbacks after subscribe()".
+    // Stane se to při přepínání karet i při dvojím připojení ve vývoji,
+    // takže starý kanál vždycky nejdřív zahodíme.
+    for (const existing of supabase.getChannels()) {
+      if (existing.topic === topic || existing.topic === `realtime:${topic}`) {
+        void supabase.removeChannel(existing);
+      }
+    }
 
     const channel: RealtimeChannel = supabase
-      .channel(`projekt:${projectId}`, {
+      .channel(topic, {
         config: { presence: { key: me.userId } },
       })
       .on(

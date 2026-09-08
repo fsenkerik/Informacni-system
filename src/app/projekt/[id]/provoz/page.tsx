@@ -112,8 +112,8 @@ export default function OperationsPage() {
             {isOpen ? "Otevřeno" : "Zavřeno"}
           </Badge>
           <div className="rounded-lg border border-border bg-surface px-3 py-1.5">
-            <span className="text-xs text-muted">Den {day + 1}</span>
-            <span className="ml-2 font-mono text-sm font-semibold tabular-nums text-ink">
+            <span className="text-xs text-muted">Den {day + 1} ·</span>
+            <span className="ml-1.5 font-mono text-sm font-semibold tabular-nums text-ink">
               {formatClock(clock)}
             </span>
           </div>
