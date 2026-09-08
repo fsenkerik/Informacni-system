@@ -214,3 +214,60 @@ describe("provozní doba", () => {
     expect(nightArrivals).toEqual([]);
   });
 });
+
+describe("ekonomika firmy", () => {
+  it("dobře navržená firma vydělá víc, než utratí", () => {
+    const engine = newEngine();
+    runTicks(engine, DAY * 2);
+    const m = engine.getMetrics();
+
+    expect(m.revenue).toBeGreaterThan(0);
+    // Nájem a nákup zboží se platí vždycky – náklady nesmí být nulové.
+    expect(m.expenses).toBeGreaterThan(0);
+    expect(m.profit).toBe(Math.round((m.revenue - m.expenses) * 100) / 100);
+    expect(m.profit).toBeGreaterThan(0);
+    expect(m.lostRevenue).toBe(0);
+  });
+
+  it("chybějící vazba stojí firmu peníze a shodí ji do ztráty", () => {
+    const broken = withoutLink(correctEshopSchema(), "Zakaznik", "Objednavka");
+    const engine = new SimEngine({
+      snapshot: broken,
+      scenario: eshop,
+      seed: 42,
+      customersPerDay: 100,
+    });
+    runTicks(engine, DAY * 2);
+    const m = engine.getMetrics();
+
+    expect(m.revenue).toBe(0);
+    expect(m.expenses).toBeGreaterThan(0);
+    expect(m.profit).toBeLessThan(0);
+    // Ušlé tržby dávají žákovi cenovku za jedinou chybějící čáru v diagramu.
+    expect(m.lostRevenue).toBeGreaterThan(0);
+  });
+
+  it("uzavírá dny do výsledovky", () => {
+    const engine = newEngine();
+    runTicks(engine, DAY * 3);
+    const ledger = engine.getLedger();
+
+    // Běh začíná v 8:00, takže se za tři dny půlnoc překročí třikrát.
+    expect(ledger.length).toBe(3);
+    expect(ledger[0].day).toBe(0);
+    for (const den of ledger) {
+      expect(den.profit).toBe(Math.round((den.revenue - den.expenses) * 100) / 100);
+    }
+  });
+
+  it("součet dnů ve výsledovce sedí s celkovými tržbami", () => {
+    const engine = newEngine();
+    runTicks(engine, DAY * 3);
+    const ledger = engine.getLedger();
+    const soucet = ledger.reduce((s, d) => s + d.revenue, 0);
+
+    // Poslední, ještě neuzavřený den se do výsledovky nepočítá.
+    expect(soucet).toBeGreaterThan(0);
+    expect(soucet).toBeLessThanOrEqual(engine.getMetrics().revenue + 0.01);
+  });
+});

@@ -100,7 +100,7 @@ export function ProjectShell({
   const scenario = project ? getScenario(project.scenario_key) : null;
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
           <Link href="/" className="text-sm font-semibold text-ink">
@@ -174,7 +174,7 @@ export function ProjectShell({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {loading ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted">
             Načítám firmu…

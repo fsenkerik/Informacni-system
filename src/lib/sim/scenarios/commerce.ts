@@ -138,7 +138,8 @@ export function buildCommerceJourney(): JourneyStep[] {
         ctx.emit({
           type: "STEP_OK",
           severity: "info",
-          message: `Zaplaceno ${total.toLocaleString("cs-CZ")} Kč.`,
+          message: `Zaplaceno ${Math.round(total).toLocaleString("cs-CZ")} Kč.`,
+          amount: total,
           stepKey: "payment",
           entityId: order?.entityId,
         });

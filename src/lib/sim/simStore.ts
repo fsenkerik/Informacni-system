@@ -8,7 +8,7 @@ import type { SchemaSnapshot, SizePreset } from "@/lib/types";
 import { SIZE_PRESET_INFO } from "@/lib/types";
 import { SimEngine, type IssueTally } from "./engine";
 import { getScenario } from "./scenarios";
-import type { SimEvent, SimMetrics, SimRecord } from "./types";
+import type { DayResult, SimEvent, SimMetrics, SimRecord } from "./types";
 
 /**
  * Simulaci točí prohlížeč toho, kdo ji spustil (host).
@@ -59,6 +59,12 @@ interface SimState {
   records: Record<string, SimRecord[]>;
   activeCustomer: ActiveCustomer | null;
   flashes: Record<string, number>;
+  /** Výsledovka po dnech – z ní se kreslí sloupcový graf zisku. */
+  ledger: DayResult[];
+  /** Poslední uzavřený den, kvůli oslavné kartě uzávěrky. */
+  lastDay: DayResult | null;
+  /** Poletující částky nad scénou. */
+  moneyPops: { id: number; amount: number }[];
 
   start(input: {
     projectId: string;
@@ -82,6 +88,9 @@ const EMPTY_METRICS: SimMetrics = {
   customersLost: 0,
   ordersCreated: 0,
   revenue: 0,
+  expenses: 0,
+  profit: 0,
+  lostRevenue: 0,
   dataIntegrity: 100,
   recordsWritten: 0,
   integrityViolations: 0,
@@ -96,6 +105,7 @@ let lastPersist = 0;
 let persistedRecords = 0;
 let pendingRecords: { entityId: string; record: SimRecord }[] = [];
 let currentProjectId: string | null = null;
+let popSeq = 0;
 
 function stopTimer() {
   if (timer) clearInterval(timer);
@@ -117,6 +127,9 @@ export const useSimStore = create<SimState>((set, get) => ({
   records: {},
   activeCustomer: null,
   flashes: {},
+  ledger: [],
+  lastDay: null,
+  moneyPops: [],
 
   setSpeed(speed) {
     set({ speed });
@@ -165,6 +178,9 @@ export const useSimStore = create<SimState>((set, get) => ({
       log: [],
       records: {},
       activeCustomer: null,
+      ledger: [],
+      lastDay: null,
+      moneyPops: [],
       clock: 8 * 60,
     });
 
@@ -267,13 +283,19 @@ type SetState = (
 
 function startLoop(set: SetState, get: () => SimState) {
   stopTimer();
+  let lastFrame = performance.now();
 
   timer = setInterval(() => {
     if (!engine) return;
     const { speed } = get();
 
-    // Kolik herních minut se má odbavit v tomhle snímku.
-    const budget = Math.max(1, Math.round((speed * FRAME_MS) / 1000));
+    // Na pozadí prohlížeč časovače zpomaluje až na jeden tik za sekundu.
+    // Herní čas se proto počítá ze skutečně uplynulého času – simulace pak
+    // v nekoukané kartě neztrácí tempo, jen se pohne po větších krocích.
+    const now = performance.now();
+    const elapsed = Math.min(now - lastFrame, 1000);
+    lastFrame = now;
+    const budget = Math.min(600, Math.max(1, Math.round((speed * elapsed) / 1000)));
     const frameEvents: SimEvent[] = [];
     let last = null as ReturnType<SimEngine["tick"]> | null;
 
@@ -300,6 +322,15 @@ function startLoop(set: SetState, get: () => SimState) {
       }
     }
 
+    // Částky, které za tenhle snímek proletěly pokladnou.
+    const castky = frameEvents.filter((e) => typeof e.amount === "number");
+    const moneyPops = [
+      ...get().moneyPops,
+      ...castky.map((e) => ({ id: (popSeq += 1), amount: e.amount! })),
+    ].slice(-3);
+
+    const closed = frameEvents.filter((e) => e.type === "DAY_ENDED").at(-1);
+
     set({
       clock: last.clock,
       day: last.day,
@@ -310,12 +341,15 @@ function startLoop(set: SetState, get: () => SimState) {
       activeCustomer: active,
       flashes,
       records,
+      moneyPops,
+      ledger: engine.getLedger(),
+      lastDay: closed?.dayResult ?? get().lastDay,
       log: [...frameEvents.filter(isLoggable).reverse(), ...get().log].slice(0, LOG_LIMIT),
     });
 
-    const now = Date.now();
-    if (channel && now - lastBroadcast > BROADCAST_MS) {
-      lastBroadcast = now;
+    const ted = Date.now();
+    if (channel && ted - lastBroadcast > BROADCAST_MS) {
+      lastBroadcast = ted;
       const state = get();
       void channel.send({
         type: "broadcast",
@@ -334,21 +368,25 @@ function startLoop(set: SetState, get: () => SimState) {
       });
     }
 
-    if (now - lastPersist > PERSIST_MS) {
-      lastPersist = now;
+    if (ted - lastPersist > PERSIST_MS) {
+      lastPersist = ted;
       void persist(get());
     }
   }, FRAME_MS);
 }
 
-/** Do logu patří jen to, čemu žák rozumí – ne každý interní krok. */
+/**
+ * Do deníku patří příběh firmy, ne každý zapsaný řádek.
+ * Tři řádky „Nový řádek v tabulce…" na jednoho zákazníka deník zahltily a
+ * zajímavé události se v nich ztrácely – počty řádků ukazuje scéna.
+ */
 function isLoggable(event: SimEvent): boolean {
+  if (typeof event.amount === "number") return true;
   return (
     event.type === "CUSTOMER_LOST" ||
     event.type === "CUSTOMER_LEFT" ||
     event.type === "STEP_FAILED" ||
-    event.type === "DAY_ENDED" ||
-    event.type === "RECORD_INSERTED"
+    event.type === "DAY_ENDED"
   );
 }
 

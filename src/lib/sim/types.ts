@@ -57,6 +57,7 @@ export type SimEventType =
   | "RECORD_INSERTED"
   | "CUSTOMER_LEFT"
   | "CUSTOMER_LOST"
+  | "EXPENSE"
   | "DAY_ENDED";
 
 export interface SimEvent {
@@ -72,6 +73,21 @@ export interface SimEvent {
   stepKey?: string;
   issue?: SimIssue;
   recordId?: string;
+  /** Částka v korunách. Kladná = příjem, záporná = výdaj. */
+  amount?: number;
+  /** Uzávěrka dne u události DAY_ENDED. */
+  dayResult?: DayResult;
+}
+
+/** Výsledek jednoho obchodního dne – z toho se skládá výsledovka firmy. */
+export interface DayResult {
+  day: number;
+  revenue: number;
+  expenses: number;
+  profit: number;
+  served: number;
+  lost: number;
+  lostRevenue: number;
 }
 
 export interface SimMetrics {
@@ -80,6 +96,12 @@ export interface SimMetrics {
   customersLost: number;
   ordersCreated: number;
   revenue: number;
+  /** Nákup zboží a fixní náklady (nájem, energie, mzdy). */
+  expenses: number;
+  /** Tržby minus náklady. Záporný zisk = firma prodělává. */
+  profit: number;
+  /** Kolik peněz uteklo se zákazníky, které systém nedokázal obsloužit. */
+  lostRevenue: number;
   /** Podíl zápisů, které prošly bez porušení integrity, v procentech. */
   dataIntegrity: number;
   recordsWritten: number;
@@ -122,6 +144,7 @@ export interface JourneyContext {
   warn(issue: SimIssue): void;
   emit(event: Omit<SimEvent, "tick">): void;
   addRevenue(amount: number): void;
+  addExpense(amount: number, duvod: string): void;
   /** Poslední chyba zápisu – kroky ji používají místo vlastní diagnostiky. */
   lastWriteIssue: SimIssue | null;
 }

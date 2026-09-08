@@ -15,6 +15,7 @@ import * as issues from "./issues";
 import { issueKey } from "./issues";
 import { checkRequirements, entityForRole, resolveLink } from "./requirements";
 import type {
+  DayResult,
   JourneyContext,
   Scenario,
   SimEvent,
@@ -29,6 +30,15 @@ const DAY_END = 20 * 60;
 const DAY_LENGTH = 24 * 60;
 const OPEN_MINUTES = DAY_END - DAY_START;
 const CATALOG_SIZE = 8;
+
+/**
+ * Ekonomika firmy – schválně jednoduchá, aby si ji žák spočítal i na papíře.
+ * Zboží nakupuješ za 60 % prodejní ceny, marže je tedy 40 %. Nájem, energie
+ * a mzdy platíš každý den bez ohledu na to, jestli něco prodáš – proto firma
+ * se špatně navrženou databází spolehlivě prodělá.
+ */
+const PURCHASE_RATIO = 0.6;
+const FIXED_DAILY_COST = 2000;
 
 export interface EngineOptions {
   snapshot: SchemaSnapshot;
@@ -75,6 +85,9 @@ export class SimEngine {
   private naturalKeyIndex = new Map<string, Set<string>>();
   private issueTally = new Map<string, IssueTally>();
   private recordSeq = 0;
+  private ledger: DayResult[] = [];
+  private chargedDays = new Set<number>();
+  private day = { revenue: 0, expenses: 0, served: 0, lost: 0, lostRevenue: 0 };
 
   private metrics: SimMetrics = {
     customersArrived: 0,
@@ -82,6 +95,9 @@ export class SimEngine {
     customersLost: 0,
     ordersCreated: 0,
     revenue: 0,
+    expenses: 0,
+    profit: 0,
+    lostRevenue: 0,
     dataIntegrity: 100,
     recordsWritten: 0,
     integrityViolations: 0,
@@ -136,17 +152,21 @@ export class SimEngine {
     const day = Math.floor(this.clock / DAY_LENGTH);
     const isOpen = minuteOfDay >= DAY_START && minuteOfDay < DAY_END;
 
-    if (minuteOfDay === 0) {
-      this.metrics.daysElapsed = day;
-      events.push({
-        tick: this.tickCount,
-        type: "DAY_ENDED",
-        severity: "info",
-        message: `Konec dne ${day}. Obslouženo ${this.metrics.customersServed} zákazníků.`,
-      });
+    if (minuteOfDay === 0 && this.tickCount > 1) {
+      this.closeDay(day - 1, events);
     }
 
-    if (minuteOfDay === DAY_START) {
+    // Nájem a naskladnění platíš každý den, i kdyby nepřišel jediný zákazník.
+    if (isOpen && !this.chargedDays.has(day)) {
+      this.chargedDays.add(day);
+      this.addExpense(FIXED_DAILY_COST);
+      events.push({
+        tick: this.tickCount,
+        type: "EXPENSE",
+        severity: "info",
+        message: `Zaplacen nájem, energie a mzdy za den ${day + 1}.`,
+        amount: -FIXED_DAILY_COST,
+      });
       this.restockCatalog(events);
     }
 
@@ -201,7 +221,7 @@ export class SimEngine {
       if (blocking) {
         if (step.optional) continue;
         this.recordIssue(blocking);
-        this.metrics.customersLost += 1;
+        this.registerLostCustomer();
         events.push({
           tick: this.tickCount,
           type: "STEP_FAILED",
@@ -237,7 +257,7 @@ export class SimEngine {
           issue: outcome.issue,
         });
         if (outcome.lost) {
-          this.metrics.customersLost += 1;
+          this.registerLostCustomer();
           events.push({
             tick: this.tickCount,
             type: "CUSTOMER_LOST",
@@ -251,6 +271,7 @@ export class SimEngine {
     }
 
     this.metrics.customersServed += 1;
+    this.day.served += 1;
     events.push({
       tick: this.tickCount,
       type: "CUSTOMER_LEFT",
@@ -340,7 +361,20 @@ export class SimEngine {
       },
       addRevenue: (amount) => {
         this.metrics.revenue += amount;
+        this.day.revenue += amount;
         this.metrics.ordersCreated += 1;
+        this.recomputeProfit();
+      },
+      addExpense: (amount, duvod) => {
+        this.addExpense(amount);
+        events.push({
+          tick: this.tickCount,
+          type: "EXPENSE",
+          severity: "info",
+          message: duvod,
+          amount: -amount,
+          customerId,
+        });
       },
     };
 
@@ -587,23 +621,124 @@ export class SimEngine {
     const stockAttr = this.attributeBySemantic(entity.id, "stock");
     if (!stockAttr) return;
 
+    const priceAttr = this.attributeBySemantic(entity.id, "price");
     const list = this.records.get(entity.id) ?? [];
     let restocked = 0;
+    let cost = 0;
+
     for (const record of list) {
       const current = Number(record.data[stockAttr.name] ?? 0);
       if (current > 10) continue;
-      record.data[stockAttr.name] = randomInt(this.rng, 20, 60);
+      const target = randomInt(this.rng, 20, 60);
+      record.data[stockAttr.name] = target;
       restocked += 1;
+
+      const price = priceAttr ? Number(record.data[priceAttr.name]) : NaN;
+      if (Number.isFinite(price)) {
+        cost += (target - Math.max(0, current)) * price * PURCHASE_RATIO;
+      }
     }
+
     if (restocked > 0) {
+      this.addExpense(cost);
       events.push({
         tick: this.tickCount,
-        type: "RECORD_INSERTED",
+        type: "EXPENSE",
         severity: "info",
-        message: `Ráno dorazilo zboží – naskladněno ${restocked} položek.`,
+        message: `Naskladněno ${restocked} položek za ${Math.round(cost).toLocaleString("cs-CZ")} Kč.`,
         entityId: entity.id,
+        amount: -Math.round(cost),
       });
     }
+  }
+
+  // -------------------------------------------------------------------
+  //  Peníze
+  // -------------------------------------------------------------------
+
+  private addExpense(amount: number) {
+    if (amount <= 0) return;
+    this.metrics.expenses += amount;
+    this.day.expenses += amount;
+    this.recomputeProfit();
+  }
+
+  private recomputeProfit() {
+    this.metrics.profit =
+      Math.round((this.metrics.revenue - this.metrics.expenses) * 100) / 100;
+  }
+
+  /**
+   * Odhad, o kolik firma přišla, když zákazníka nedokázala obsloužit.
+   * Bere průměrnou cenu ze sortimentu krát obvyklý počet kusů v objednávce –
+   * díky tomu je hned vidět, kolik stojí chybějící vazba za jediný den.
+   */
+  private estimateBasket(): number {
+    const entity = entityForRole(this.snapshot, "product");
+    if (!entity) return 0;
+    const priceAttr = this.attributeBySemantic(entity.id, "price");
+    if (!priceAttr) return 0;
+
+    const prices = (this.records.get(entity.id) ?? [])
+      .map((r) => Number(r.data[priceAttr.name]))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (prices.length === 0) return 0;
+
+    const average = prices.reduce((sum, n) => sum + n, 0) / prices.length;
+    return Math.round(average * 2 * 100) / 100;
+  }
+
+  private registerLostCustomer() {
+    this.metrics.customersLost += 1;
+    this.day.lost += 1;
+    const missed = this.estimateBasket();
+    this.metrics.lostRevenue += missed;
+    this.day.lostRevenue += missed;
+  }
+
+  private closeDay(day: number, events: SimEvent[]) {
+    const result: DayResult = {
+      day,
+      revenue: Math.round(this.day.revenue * 100) / 100,
+      expenses: Math.round(this.day.expenses * 100) / 100,
+      profit: Math.round((this.day.revenue - this.day.expenses) * 100) / 100,
+      served: this.day.served,
+      lost: this.day.lost,
+      lostRevenue: Math.round(this.day.lostRevenue * 100) / 100,
+    };
+
+    this.ledger.push(result);
+    this.metrics.daysElapsed = day + 1;
+    this.day = { revenue: 0, expenses: 0, served: 0, lost: 0, lostRevenue: 0 };
+
+    events.push({
+      tick: this.tickCount,
+      type: "DAY_ENDED",
+      severity: result.profit >= 0 ? "info" : "warn",
+      message:
+        result.profit >= 0
+          ? `Konec dne ${day + 1}. Zisk ${Math.round(result.profit).toLocaleString("cs-CZ")} Kč.`
+          : `Konec dne ${day + 1}. Ztráta ${Math.round(Math.abs(result.profit)).toLocaleString("cs-CZ")} Kč.`,
+      dayResult: result,
+    });
+  }
+
+  getLedger(): DayResult[] {
+    return [...this.ledger];
+  }
+
+  /** Pořizovací hodnota celého skladu – kolik v něm leží peněz. */
+  private catalogValue(entity: EntityRecord): number {
+    const priceAttr = this.attributeBySemantic(entity.id, "price");
+    const stockAttr = this.attributeBySemantic(entity.id, "stock");
+    if (!priceAttr) return 0;
+
+    return (this.records.get(entity.id) ?? []).reduce((sum, record) => {
+      const price = Number(record.data[priceAttr.name]);
+      const stock = stockAttr ? Number(record.data[stockAttr.name]) : 1;
+      if (!Number.isFinite(price)) return sum;
+      return sum + price * (Number.isFinite(stock) ? stock : 1);
+    }, 0);
   }
 
   private recordIssue(issue: SimIssue) {

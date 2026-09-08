@@ -5,7 +5,8 @@ import { DoorOpen, User } from "lucide-react";
 import { useSchemaStore } from "@/lib/er/store";
 import { useSimStore } from "@/lib/sim/simStore";
 import { getRole, getScenario } from "@/lib/sim/scenarios";
-import { formatNumber } from "@/lib/utils";
+import { DailyClose } from "./DailyClose";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 /** Pořadí tabulek na scéně kopíruje cestu zákazníka zleva doprava. */
@@ -18,6 +19,7 @@ export function SimStage() {
   const flashes = useSimStore((s) => s.flashes);
   const active = useSimStore((s) => s.activeCustomer);
   const status = useSimStore((s) => s.status);
+  const moneyPops = useSimStore((s) => s.moneyPops);
 
   const scenario = getScenario(project?.scenario_key ?? "eshop");
 
@@ -97,6 +99,29 @@ export function SimStage() {
           </div>
         );
       })}
+
+      {/* Každá koruna, co proteče pokladnou, je vidět. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-28 z-10 flex justify-center gap-8">
+        <AnimatePresence>
+          {moneyPops.map((pop) => (
+            <motion.span
+              key={pop.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: [0, 1, 1, 0], y: [12, -24, -48, -72] }}
+              transition={{ duration: 1.8, times: [0, 0.15, 0.7, 1] }}
+              className={cn(
+                "text-lg font-semibold tabular-nums drop-shadow",
+                pop.amount >= 0 ? "text-ok" : "text-bad",
+              )}
+            >
+              {pop.amount >= 0 ? "+" : "−"}
+              {formatCurrency(Math.abs(pop.amount))}
+            </motion.span>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <DailyClose />
 
       {active && active.state === "lost" ? (
         <motion.div

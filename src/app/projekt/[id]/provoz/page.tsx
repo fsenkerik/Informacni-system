@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { Pause, Play, Square } from "lucide-react";
 import { SimStage } from "@/components/sim/SimStage";
-import { MetricsPanel } from "@/components/sim/MetricsPanel";
+import { BusinessPanel } from "@/components/sim/BusinessPanel";
 import { IssuePanel } from "@/components/sim/IssuePanel";
 import { EventLog, formatClock } from "@/components/sim/EventLog";
 import { Badge, Button, Card, Select } from "@/components/ui";
@@ -58,7 +58,7 @@ export default function OperationsPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 px-6 py-5">
+    <main className="mx-auto flex h-full w-full max-w-[1600px] min-h-0 flex-col gap-4 px-6 py-5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           {status === "running" ? (
@@ -142,7 +142,7 @@ export default function OperationsPage() {
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_360px]">
         <div className="flex min-h-0 flex-col gap-4">
           <SimStage />
-          <MetricsPanel />
+          <BusinessPanel />
         </div>
 
         <div className="flex min-h-0 flex-col gap-4">
