@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { DEMO_PROJECT_ID } from "@/lib/er/demo";
 import type { SchemaSnapshot, SizePreset } from "@/lib/types";
 import { SIZE_PRESET_INFO } from "@/lib/types";
 import { SimEngine, type IssueTally } from "./engine";
@@ -126,7 +127,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   },
 
   async start({ projectId, snapshot, scenarioKey, sizePreset }) {
-    const supabase = getSupabaseBrowserClient();
+    const demo = projectId === DEMO_PROJECT_ID;
     const scenario = getScenario(scenarioKey);
     const customersPerDay = SIZE_PRESET_INFO[sizePreset].customersPerDay;
     const seed = Math.floor(Math.random() * 2_000_000_000) + 1;
@@ -136,24 +137,29 @@ export const useSimStore = create<SimState>((set, get) => ({
     pendingRecords = [];
     engine = new SimEngine({ snapshot, scenario, seed, customersPerDay });
 
-    const { data: user } = await supabase.auth.getUser();
-    const { data: run } = await supabase
-      .from("sim_runs")
-      .insert({
-        project_id: projectId,
-        scenario_key: scenarioKey,
-        seed,
-        speed: get().speed,
-        customers_per_day: customersPerDay,
-        host_user_id: user.user?.id ?? null,
-      })
-      .select()
-      .single();
+    let runId: string | null = null;
+    if (!demo) {
+      const supabase = getSupabaseBrowserClient();
+      const { data: user } = await supabase.auth.getUser();
+      const { data: run } = await supabase
+        .from("sim_runs")
+        .insert({
+          project_id: projectId,
+          scenario_key: scenarioKey,
+          seed,
+          speed: get().speed,
+          customers_per_day: customersPerDay,
+          host_user_id: user.user?.id ?? null,
+        })
+        .select()
+        .single();
+      runId = run?.id ?? null;
+    }
 
     set({
       status: "running",
       isHost: true,
-      runId: run?.id ?? null,
+      runId,
       metrics: EMPTY_METRICS,
       issues: [],
       log: [],
@@ -162,7 +168,7 @@ export const useSimStore = create<SimState>((set, get) => ({
       clock: 8 * 60,
     });
 
-    ensureChannel(projectId);
+    if (!demo) ensureChannel(projectId);
     startLoop(set, get);
   },
 
@@ -192,6 +198,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   },
 
   watch(projectId) {
+    if (projectId === DEMO_PROJECT_ID) return () => {};
     const supabase = getSupabaseBrowserClient();
     const watchChannel = supabase
       .channel(`sim:${projectId}`)
@@ -374,7 +381,7 @@ function deriveActiveCustomer(
 async function persist(state: SimState) {
   const supabase = getSupabaseBrowserClient();
   const { runId, metrics, issues } = state;
-  if (!runId || !currentProjectId) return;
+  if (!runId || !currentProjectId || currentProjectId === DEMO_PROJECT_ID) return;
 
   await supabase
     .from("sim_runs")

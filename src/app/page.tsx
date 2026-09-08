@@ -55,6 +55,14 @@ export default function HomePage() {
         </Link>
       </div>
 
+      <p className="mt-6 text-sm text-ink-2">
+        Chceš to jen vidět?{" "}
+        <Link href="/projekt/ukazka/provoz" className="font-medium text-accent hover:underline">
+          Otevři ukázkovou firmu
+        </Link>{" "}
+        – běží bez přihlášení i bez databáze, ideální na projektor.
+      </p>
+
       <section className="mt-14">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
           Obory, ve kterých se dá podnikat

@@ -180,7 +180,10 @@ export type Database = {
     Tables: {
       teachers: Table<TeacherRow, "created_at">;
       classes: Table<ClassRow, "id" | "created_at">;
-      projects: Table<ProjectRow, "id" | "join_code" | "created_at" | "updated_at">;
+      projects: Table<
+        ProjectRow,
+        "id" | "join_code" | "free_mode" | "size_preset" | "scenario_key" | "created_at" | "updated_at"
+      >;
       project_members: Table<ProjectMemberRow, "last_seen_at" | "joined_at" | "role">;
       entities: Table<EntityRow, "id" | "created_at" | "updated_at">;
       attributes: Table<AttributeRow, "id" | "project_id" | "created_at" | "updated_at">;

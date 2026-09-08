@@ -19,6 +19,14 @@ import type {
   SchemaSnapshot,
 } from "@/lib/types";
 import { toAttribute, toEntity, toRelationship } from "./mappers";
+import { DEMO_PROJECT, DEMO_PROJECT_ID, buildDemoSchema } from "./demo";
+
+/**
+ * Ukázkový projekt běží celý v prohlížeči – žádné dotazy do databáze.
+ * Díky tomu jde aplikaci předvést na projektoru, než je Supabase nastavená.
+ */
+const isDemo = (projectId: string | null) => projectId === DEMO_PROJECT_ID;
+const newId = () => globalThis.crypto.randomUUID();
 
 export interface Collaborator {
   userId: string;
@@ -116,9 +124,21 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   async load(projectId) {
-    const supabase = getSupabaseBrowserClient();
     set({ loading: true, error: null, projectId });
 
+    if (isDemo(projectId)) {
+      const demo = buildDemoSchema();
+      set({
+        project: DEMO_PROJECT,
+        entities: demo.entities,
+        attributes: demo.attributes,
+        relationships: demo.relationships,
+        loading: false,
+      });
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
     const [project, entities, attributes, relationships] = await Promise.all([
       supabase.from("projects").select("*").eq("id", projectId).single(),
       supabase.from("entities").select("*").eq("project_id", projectId),
@@ -145,6 +165,7 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
 
   connect(projectId, me) {
+    if (isDemo(projectId)) return () => {};
     const supabase = getSupabaseBrowserClient();
 
     const channel: RealtimeChannel = supabase
@@ -223,8 +244,14 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   async createEntity({ name, roleKey = null, posX, posY }) {
     const projectId = get().projectId;
     if (!projectId) return null;
-    const supabase = getSupabaseBrowserClient();
 
+    if (isDemo(projectId)) {
+      const entity = { id: newId(), projectId, name, roleKey, posX, posY, color: null };
+      set((s) => ({ entities: [...s.entities, entity], selectedEntityId: entity.id }));
+      return entity;
+    }
+
+    const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("entities")
       .insert({ project_id: projectId, name, role_key: roleKey, pos_x: posX, pos_y: posY })
@@ -244,6 +271,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, name } : e)),
     }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("entities").update({ name }).eq("id", id);
   },
@@ -252,6 +281,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, roleKey } : e)),
     }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("entities").update({ role_key: roleKey }).eq("id", id);
   },
@@ -260,6 +291,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
     set((s) => ({
       entities: s.entities.map((e) => (e.id === id ? { ...e, posX, posY } : e)),
     }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("entities").update({ pos_x: posX, pos_y: posY }).eq("id", id);
   },
@@ -273,6 +306,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
       ),
       selectedEntityId: s.selectedEntityId === id ? null : s.selectedEntityId,
     }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("entities").delete().eq("id", id);
   },
@@ -292,8 +327,33 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   }) {
     const projectId = get().projectId;
     if (!projectId) return;
-    const supabase = getSupabaseBrowserClient();
     const orderIndex = get().attributes.filter((a) => a.entityId === entityId).length;
+
+    if (isDemo(projectId)) {
+      set((s) => ({
+        attributes: [
+          ...s.attributes,
+          {
+            id: newId(),
+            entityId,
+            projectId,
+            name,
+            dataType,
+            length: null,
+            enumValues: null,
+            isPrimaryKey,
+            isRequired,
+            isUnique,
+            defaultValue: null,
+            semanticKey,
+            orderIndex,
+          },
+        ],
+      }));
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
 
     const { data, error } = await supabase
       .from("attributes")
@@ -326,6 +386,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
       attributes: s.attributes.map((a) => (a.id === id ? { ...a, ...patch } : a)),
     }));
 
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     const row: Partial<AttributeRow> = {};
     if (patch.name !== undefined) row.name = patch.name;
@@ -344,6 +406,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
 
   async deleteAttribute(id) {
     set((s) => ({ attributes: s.attributes.filter((a) => a.id !== id) }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("attributes").delete().eq("id", id);
   },
@@ -355,8 +419,24 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   async createRelationship({ fromEntityId, toEntityId, kind, junctionEntityId = null }) {
     const projectId = get().projectId;
     if (!projectId) return null;
-    const supabase = getSupabaseBrowserClient();
 
+    if (isDemo(projectId)) {
+      const relationship = {
+        id: newId(),
+        projectId,
+        fromEntityId,
+        toEntityId,
+        kind,
+        fromLabel: null,
+        toLabel: null,
+        junctionEntityId,
+        onDelete: "restrict" as const,
+      };
+      set((s) => ({ relationships: [...s.relationships, relationship] }));
+      return relationship;
+    }
+
+    const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("relationships")
       .insert({
@@ -386,6 +466,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
       relationships: s.relationships.map((r) => (r.id === id ? { ...r, ...patch } : r)),
     }));
 
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     const row: Partial<RelationshipRow> = {};
     if (patch.kind !== undefined) row.kind = patch.kind;
@@ -403,6 +485,8 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
 
   async deleteRelationship(id) {
     set((s) => ({ relationships: s.relationships.filter((r) => r.id !== id) }));
+    if (isDemo(get().projectId)) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.from("relationships").delete().eq("id", id);
   },

@@ -57,8 +57,16 @@ const TYPE_HINTS: { match: RegExp; expect: string[]; why: string }[] = [
   },
 ];
 
-/** Sloupce, které vypadají, že do jedné buňky cpou víc hodnot (porušení 1NF). */
-const NOT_ATOMIC = /seznam|polozky|produkty|telefony|emaily|adresy|_1$|_2$/i;
+/**
+ * Sloupce, které vypadají, že do jedné buňky cpou víc hodnot (porušení 1NF).
+ *
+ * Vzory jsou schválně ukotvené na začátek názvu: `polozky` je podezřelé,
+ * ale `id_polozky` je úplně v pořádku primární klíč spojovací tabulky.
+ */
+const NOT_ATOMIC = /^(seznam|polozky|produkty|telefony|emaily|adresy|kontakty)|_1$|_2$/i;
+
+/** Klíčové sloupce se na atomicitu netestují – `id_polozky` není seznam. */
+const KEY_LIKE = /^id_|_id$/i;
 
 export function validateSchema(
   snapshot: SchemaSnapshot,
@@ -161,7 +169,11 @@ export function validateSchema(
       }
 
       // --- Porušení 1. normální formy --------------------------------
-      if (NOT_ATOMIC.test(attribute.name)) {
+      if (
+        !attribute.isPrimaryKey &&
+        !KEY_LIKE.test(attribute.name) &&
+        NOT_ATOMIC.test(attribute.name)
+      ) {
         findings.push({
           id: `nf1-${attribute.id}`,
           level: "hint",

@@ -9,6 +9,7 @@ import { SetupNotice } from "@/components/SetupNotice";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { useSchemaStore } from "@/lib/er/store";
+import { DEMO_PROJECT_ID } from "@/lib/er/demo";
 import { getScenario } from "@/lib/sim/scenarios";
 import { cn } from "@/lib/utils";
 
@@ -36,12 +37,18 @@ export function ProjectShell({
   const collaborators = useSchemaStore((s) => s.collaborators);
   const [nickname, setNickname] = useState<string | null>(null);
 
+  const isDemo = projectId === DEMO_PROJECT_ID;
+
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured && projectId !== DEMO_PROJECT_ID) return;
     let disconnect: (() => void) | undefined;
 
     async function boot() {
       await load(projectId);
+      if (projectId === DEMO_PROJECT_ID) {
+        setNickname("ukázka");
+        return;
+      }
 
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase.auth.getUser();
@@ -64,7 +71,7 @@ export function ProjectShell({
     return () => disconnect?.();
   }, [projectId, load, connect]);
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured && !isDemo) {
     return (
       <main className="mx-auto w-full max-w-2xl px-6 py-16">
         <SetupNotice />
