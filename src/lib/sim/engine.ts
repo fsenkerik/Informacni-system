@@ -162,7 +162,7 @@ export class SimEngine {
 
     const newIssues = [...this.issueTally.values()]
       .filter((i) => !issuesBefore.has(issueKey(i)))
-      .map(({ count: _count, firstSeenTick: _f, lastSeenTick: _l, ...issue }) => issue);
+      .map(stripTally);
 
     return {
       tick: this.tickCount,
@@ -264,74 +264,68 @@ export class SimEngine {
     events: SimEvent[],
     customerId: string,
   ): JourneyContext {
-    const engine = this;
-    const memory = new Map<string, unknown>();
-
+    // Šipkové funkce schválně: `this` uvnitř zůstává instancí enginu,
+    // takže není potřeba aliasovat.
     const ctx: JourneyContext = {
       snapshot: this.snapshot,
       scenarioKey: this.scenario.key,
       tick: this.tickCount,
-      random: () => engine.rng(),
-      memory,
+      random: () => this.rng(),
+      memory: new Map<string, unknown>(),
       lastWriteIssue: null,
 
-      roleEntity(role) {
-        const entity = entityForRole(engine.snapshot, role);
+      roleEntity: (role) => {
+        const entity = entityForRole(this.snapshot, role);
         if (!entity) throw new Error(`Role ${role} není v diagramu.`);
         return entity;
       },
-      hasRole(role) {
-        return Boolean(entityForRole(engine.snapshot, role));
-      },
-      insert(role, extra) {
-        const entity = entityForRole(engine.snapshot, role);
+      hasRole: (role) => Boolean(entityForRole(this.snapshot, role)),
+      insert: (role, extra) => {
+        const entity = entityForRole(this.snapshot, role);
         if (!entity) return null;
-        return engine.writeRecord(entity, person, extra, ctx, events, customerId);
+        return this.writeRecord(entity, person, extra, ctx, events, customerId);
       },
-      insertInto(entity, extra) {
-        return engine.writeRecord(entity, person, extra, ctx, events, customerId);
-      },
-      pickExisting(role) {
-        const entity = entityForRole(engine.snapshot, role);
+      insertInto: (entity, extra) =>
+        this.writeRecord(entity, person, extra, ctx, events, customerId),
+      pickExisting: (role) => {
+        const entity = entityForRole(this.snapshot, role);
         if (!entity) return undefined;
-        const list = engine.records.get(entity.id) ?? [];
+        const list = this.records.get(entity.id) ?? [];
         if (list.length === 0) return undefined;
-        return list[Math.floor(engine.rng() * list.length)];
+        return list[Math.floor(this.rng() * list.length)];
       },
-      allOf(role) {
-        const entity = entityForRole(engine.snapshot, role);
+      allOf: (role) => {
+        const entity = entityForRole(this.snapshot, role);
         if (!entity) return [];
-        return engine.records.get(entity.id) ?? [];
+        return this.records.get(entity.id) ?? [];
       },
-      resolveJunction(fromRole, toRole) {
-        const from = entityForRole(engine.snapshot, fromRole);
-        const to = entityForRole(engine.snapshot, toRole);
+      resolveJunction: (fromRole, toRole) => {
+        const from = entityForRole(this.snapshot, fromRole);
+        const to = entityForRole(this.snapshot, toRole);
         if (!from || !to) return null;
-        const link = resolveLink(engine.snapshot, from, to, "M:N");
+        const link = resolveLink(this.snapshot, from, to, "M:N");
         return link.status === "ok" ? link.junction : null;
       },
-      link(child, parent, parentEntity) {
+      link: (child, parent, parentEntity) => {
         const column = foreignKeyColumn(parentEntity.name);
-        child.data[column] = engine.primaryKeyValue(parent);
+        child.data[column] = this.primaryKeyValue(parent);
       },
-      getValue(record, semantic) {
-        const attribute = engine.attributeBySemantic(record.entityId, semantic);
+      getValue: (record, semantic) => {
+        const attribute = this.attributeBySemantic(record.entityId, semantic);
         if (!attribute) return undefined;
         return record.data[attribute.name];
       },
-      setValue(record, semantic, value) {
-        const attribute = engine.attributeBySemantic(record.entityId, semantic);
+      setValue: (record, semantic, value) => {
+        const attribute = this.attributeBySemantic(record.entityId, semantic);
         if (!attribute) return;
         const coerced = coerceToAttribute(value, attribute);
         if (coerced.ok) record.data[attribute.name] = coerced.value;
       },
-      fail(issue, opts) {
-        return { ok: false, issue, lost: opts?.lost ?? false };
-      },
-      warn(issue) {
-        engine.recordIssue(issue);
+      fail: (issue, opts) => ({ ok: false, issue, lost: opts?.lost ?? false }),
+      warn: (issue) => {
+        this.recordIssue(issue);
         events.push({
-          tick: engine.tickCount,
+          tick: this.tickCount,
           type: "STEP_FAILED",
           severity: "warn",
           message: issue.message,
@@ -340,12 +334,12 @@ export class SimEngine {
           issue,
         });
       },
-      emit(event) {
-        events.push({ ...event, tick: engine.tickCount, customerId });
+      emit: (event) => {
+        events.push({ ...event, tick: this.tickCount, customerId });
       },
-      addRevenue(amount) {
-        engine.metrics.revenue += amount;
-        engine.metrics.ordersCreated += 1;
+      addRevenue: (amount) => {
+        this.metrics.revenue += amount;
+        this.metrics.ordersCreated += 1;
       },
     };
 
@@ -637,6 +631,18 @@ export class SimEngine {
     this.metrics.dataIntegrity =
       attempts === 0 ? 100 : Math.floor((recordsWritten / attempts) * 100);
   }
+}
+
+/** Z počítadla chyb udělá zase obyčejnou chybu pro UI. */
+function stripTally(tally: IssueTally): SimIssue {
+  return {
+    code: tally.code,
+    message: tally.message,
+    fix: tally.fix,
+    entityId: tally.entityId,
+    relationshipId: tally.relationshipId,
+    roles: tally.roles,
+  };
 }
 
 /** Pomůcka pro testy a pro rychlé „přehraj mi 200 tiků“. */

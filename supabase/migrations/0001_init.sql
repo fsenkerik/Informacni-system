@@ -170,8 +170,11 @@ create table if not exists public.sim_issues (
   last_seen_tick  bigint not null default 0
 );
 
+-- NULLS NOT DISTINCT: chyba bez konkrétní tabulky (chybějící vazba) se má
+-- počítat jako jedna, ne přibývat s každým zákazníkem. Zároveň na tenhle
+-- index míří ON CONFLICT při ukládání průběžných výsledků.
 create unique index if not exists sim_issues_unique_idx
-  on public.sim_issues (run_id, code, coalesce(entity_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  on public.sim_issues (run_id, code, entity_id) nulls not distinct;
 create index if not exists sim_issues_run_idx on public.sim_issues (run_id);
 
 -- ---------------------------------------------------------------------

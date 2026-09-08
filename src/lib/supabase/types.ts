@@ -14,9 +14,18 @@ import type {
  * v `Generated` doplňuje databáze (id, project_id z triggeru, timestampy),
  * takže je klient nemusí posílat.
  */
+type NullableKeys<Row> = {
+  [K in keyof Row]-?: null extends Row[K] ? K : never;
+}[keyof Row];
+
+type Optional<Row, Generated extends keyof Row> = Generated | NullableKeys<Row>;
+
 type Table<Row, Generated extends keyof Row = never> = {
   Row: Row;
-  Insert: Omit<Row, Generated> & Partial<Pick<Row, Generated>>;
+  // Vynechat jde všechno, co si databáze doplní sama, i každý sloupec,
+  // který smí být NULL – přesně jako v Postgresu.
+  Insert: Omit<Row, Optional<Row, Generated>> &
+    Partial<Pick<Row, Optional<Row, Generated>>>;
   Update: Partial<Row>;
   Relationships: [];
 };
