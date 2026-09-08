@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
   MarkerType,
   ReactFlow,
+  useNodesState,
   type Connection,
   type Edge,
   type NodeChange,
@@ -44,20 +45,35 @@ export function ErCanvas({
   const snapshot = useSnapshot();
 
   const scenario = getScenario(project?.scenario_key ?? "eshop");
-  const current = snapshot;
 
-  const nodes: EntityNodeType[] = useMemo(
-    () =>
+  /**
+   * Pozice uzlů drží během tažení plátno, ne úložiště.
+   *
+   * Kdybychom uzly počítali z úložiště při každém překreslení, přepsali bychom
+   * plátnu pozici zpátky na starou a tabulka by se při tažení nehnula – jen by
+   * po puštění skočila na nové místo. Do databáze se proto zapisuje až na konci
+   * tažení a sem se cizí změny slévají tak, aby právě taženou tabulku minuly.
+   */
+  const [nodes, setNodes, applyNodeChanges] = useNodesState<EntityNodeType>([]);
+
+  useEffect(() => {
+    setNodes((previous) =>
       entities.map((entity) => {
+        const existing = previous.find((node) => node.id === entity.id);
         const role = getRole(scenario, entity.roleKey);
+
         return {
           id: entity.id,
           type: "entity" as const,
-          position: { x: entity.posX, y: entity.posY },
+          // Taženou tabulku nepřepisujeme – jinak by utekla pod myší.
+          position: existing?.dragging
+            ? existing.position
+            : { x: entity.posX, y: entity.posY },
+          dragging: existing?.dragging,
           selected: entity.id === selectedEntityId,
           data: {
             entity,
-            attributes: attributesOf(current, entity.id),
+            attributes: attributesOf(snapshot, entity.id),
             roleLabel: role?.label ?? null,
             roleColor: role?.color ?? "var(--color-role-custom)",
             highlighted: highlighted.includes(entity.id),
@@ -65,8 +81,8 @@ export function ErCanvas({
           },
         };
       }),
-    [entities, scenario, selectedEntityId, highlighted, current],
-  );
+    );
+  }, [entities, snapshot, scenario, selectedEntityId, highlighted, setNodes]);
 
   const edges: Edge[] = useMemo(
     () =>
@@ -98,8 +114,12 @@ export function ErCanvas({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<EntityNodeType>[]) => {
+      // Nejdřív ať se plátno překreslí – tažení tak jde plynule vidět.
+      applyNodeChanges(changes);
+
       for (const change of changes) {
-        if (change.type === "position" && change.position && !change.dragging) {
+        // `dragging: false` přijde v okamžiku puštění; teprve tehdy se ukládá.
+        if (change.type === "position" && change.position && change.dragging === false) {
           void moveEntity(change.id, change.position.x, change.position.y);
         }
         if (change.type === "select" && change.selected) {
@@ -108,7 +128,7 @@ export function ErCanvas({
         }
       }
     },
-    [moveEntity, select, onSelectRelationship],
+    [applyNodeChanges, moveEntity, select, onSelectRelationship],
   );
 
   const handleConnect = useCallback(

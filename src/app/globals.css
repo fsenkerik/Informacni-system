@@ -72,6 +72,35 @@ body {
   --xy-attribution-background-color: transparent;
 }
 
+/*
+  Odezva na tažení. Bez toho žák neví, jestli tabulku vůbec chytil –
+  kurzor a nadzvednutí jsou jediné, co mu to potvrdí.
+*/
+.df-canvas .react-flow__node {
+  cursor: grab;
+  transition: filter 0.15s ease;
+}
+
+.df-canvas .react-flow__node:active,
+.df-canvas .react-flow__node.dragging {
+  cursor: grabbing;
+}
+
+.df-canvas .react-flow__node.dragging {
+  filter: drop-shadow(0 12px 20px rgb(0 0 0 / 0.45));
+}
+
+/* Úchyty pro kreslení vazeb se zvýrazní, až když je tabulka pod myší. */
+.df-canvas .react-flow__handle {
+  opacity: 0.45;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.df-canvas .react-flow__node:hover .react-flow__handle {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
