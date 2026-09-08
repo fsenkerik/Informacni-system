@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
+/*
+  DataFirma – barevný systém.
+  Světlé rozhraní pro aplikaci, tmavé plátno pro ER editor a provoz simulace.
+  Stavové barvy (ok / warn / bad) se používají VÝHRADNĚ pro stav systému,
+  nikdy jako dekorace – aby na projektoru šlo poznat, že něco hoří.
+*/
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-2: #f6f7fb;
+  --color-surface-3: #eceef6;
+  --color-border: #dcdfea;
+  --color-border-strong: #c3c8da;
+  --color-ink: #171a26;
+  --color-ink-2: #4a5068;
+  --color-muted: #767d96;
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-soft: #eef0ff;
+  --color-accent-fg: #ffffff;
+
+  --color-ok: #15803d;
+  --color-ok-soft: #e7f6ec;
+  --color-warn: #b45309;
+  --color-warn-soft: #fdf1e0;
+  --color-bad: #be123c;
+  --color-bad-soft: #fdeaef;
+
+  /* tmavé plátno ER editoru a provozu */
+  --color-canvas: #12162a;
+  --color-canvas-2: #1b2140;
+  --color-canvas-line: #2c3358;
+  --color-canvas-ink: #e8eaf6;
+  --color-canvas-muted: #9aa2c8;
+
+  /* barvy rolí entit – odlišují Zákazníka od Objednávky na první pohled */
+  --color-role-customer: #2563eb;
+  --color-role-order: #7c3aed;
+  --color-role-product: #0d9488;
+  --color-role-payment: #b45309;
+  --color-role-staff: #db2777;
+  --color-role-custom: #475569;
+
+  --radius-card: 0.75rem;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Plátno React Flow ladíme na tmavé téma přes proměnné knihovny. */
+.df-canvas {
+  --xy-background-color: var(--color-canvas);
+  --xy-edge-stroke: var(--color-canvas-line);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-controls-button-background-color: var(--color-canvas-2);
+  --xy-controls-button-color: var(--color-canvas-ink);
+  --xy-controls-button-border-color: var(--color-canvas-line);
+  --xy-attribution-background-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
