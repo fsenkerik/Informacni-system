@@ -271,3 +271,28 @@ describe("ekonomika firmy", () => {
     expect(soucet).toBeLessThanOrEqual(engine.getMetrics().revenue + 0.01);
   });
 });
+
+describe("start podnikání", () => {
+  it("počáteční sklad se musí zaplatit, než se začne prodávat", () => {
+    const engine = newEngine(correctEshopSchema(), 20);
+    // První hodina provozu: sortiment je nakoupený, tržby sotva začaly.
+    runTicks(engine, 60);
+    const m = engine.getMetrics();
+
+    // Nájem sám o sobě je 2 000 Kč – náklady musí být řádově vyšší.
+    expect(m.expenses).toBeGreaterThan(100_000);
+    expect(m.profit).toBeLessThan(0);
+  });
+
+  it("firma se ze ztráty postupně dostává, jak prodává", () => {
+    const engine = newEngine(correctEshopSchema(), 20);
+    runTicks(engine, 60);
+    const start = engine.getMetrics().profit;
+
+    runTicks(engine, 24 * 60 * 3);
+    const pozdeji = engine.getMetrics().profit;
+
+    expect(start).toBeLessThan(0);
+    expect(pozdeji).toBeGreaterThan(start);
+  });
+});

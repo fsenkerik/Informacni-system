@@ -605,12 +605,19 @@ export class SimEngine {
     for (let i = 0; i < CATALOG_SIZE; i += 1) {
       this.writeRecord(entity, person, undefined, ctx, [], "seed");
     }
+
+    // První sklad se musí zaplatit, jinak by firma prodávala zboží, které
+    // nikdy nekoupila – a začátek podnikání by vypadal jako hotové peníze.
+    const cost = this.catalogValue(entity) * PURCHASE_RATIO;
+    this.addExpense(cost);
+
     events.push({
       tick: this.tickCount,
-      type: "RECORD_INSERTED",
+      type: "EXPENSE",
       severity: "info",
-      message: `Do tabulky „${entity.name}“ se nahrál sortiment (${CATALOG_SIZE} položek).`,
+      message: `Nakoupen počáteční sklad (${CATALOG_SIZE} položek) za ${Math.round(cost).toLocaleString("cs-CZ")} Kč.`,
       entityId: entity.id,
+      amount: -Math.round(cost),
     });
   }
 
